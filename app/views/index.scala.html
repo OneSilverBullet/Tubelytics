@@ -1,0 +1,198 @@
+@(request: play.mvc.Http.Request)
+
+@main("YT Lytics") {
+
+  <script>
+    let counter = 1;
+    let queries = [];
+    let ws = new WebSocket('@routes.HomeController.ws.webSocketURL(request)');
+
+    function buildResult(videoId, title, videoHyperlink, channelID, channel, description, gradeLevel, readingScore, thumbnail) {
+      function encode(key, value) {
+        if (value) {
+          return `${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+        }
+        return null;
+      }
+
+      const queryParams = [
+        encode("Id", videoId),
+        encode("Title", title),
+        encode("ChannelTitle", channel),
+        encode("Description", description || " "),
+        encode("VideoHyperlink", videoHyperlink),
+        encode("ChannelHyperlink", channel),
+      ].filter(Boolean).join("&");
+
+      const tagsUrl = `/tags?${queryParams}`;
+
+      return `<li >
+                <div style="display: flex; justify-content: space-between; gap: 16px;">
+                    <div>
+                        <b>Title:</b>
+                        <a href="${videoHyperlink}">${title}</a>,
+                        <b>Channel:</b>
+                        <a href="@routes.HomeController.searchChannel("")${channelID}">${channel}</a>,
+                        <b>Description:</b>
+                        " ${description} ".
+                        Flesch-Kincaid Grade Level = ${gradeLevel}, Flesch Reading Ease Score = ${readingScore}
+                        <a id="tags" href="${tagsUrl}">Tags</a>
+                    </div>
+                    <div>
+                        <img src="${thumbnail}">
+                    </div>
+                </div>
+            </li>`;
+    }
+
+    function mapSentimentScore(score) {
+      if (score >= 0.07) {
+        return ":)";
+      } else if (score <= -0.07) {
+        return ":(";
+      } else {
+        return ":|";
+      }
+    }
+
+    let resultCounts = [];
+    let sentimentScores = [];
+    let gradeLevels = [];
+    let readingScores = [];
+    ws.onmessage = function(event) {
+      const msg = JSON.parse(event.data);
+      const query = msg.query.split(" ").join("_");
+      if (msg.code === "MultipleResult") {
+        if (resultCounts[query]) {
+          resultCounts[query] += msg.totalCount;
+          sentimentScores[query] += msg.totalSentimentScore;
+          gradeLevels[query] += msg.totalReadingGrade;
+          readingScores[query] += msg.totalReadingScore;
+        } else {
+          resultCounts[query] = msg.totalCount;
+          sentimentScores[query] = msg.totalSentimentScore;
+          gradeLevels[query] = msg.totalReadingGrade;
+          readingScores[query] = msg.totalReadingScore;
+        }
+
+        for (const result of msg.results) {
+          const para = $("<div></div>").html(buildResult(
+                  result.id,
+                  result.title,
+                  result.videoHyperlink,
+                  result.channelID,
+                  result.channel,
+                  result.description,
+                  result.gradeLevel,
+                  result.readingScore,
+                  result.thumbnailHyperlink
+          ));
+          $("#results #" + query + " #inner-results").prepend(para);
+
+          const list = $("#results #" + query + " #inner-results ").children();
+          if (list.length > 10) {
+            // Remove the bottom element to stay at 10
+            list.last().remove();
+          }
+        }
+      } else {
+        const result = msg.result;
+
+        if (resultCounts[query]) {
+          resultCounts[query] += 1;
+          sentimentScores[query] += result.sentimentScore;
+          gradeLevels[query] += result.gradeLevel;
+          readingScores[query] += result.readingScore;
+        } else {
+          resultCounts[query] = 1;
+          sentimentScores[query] = result.sentimentScore;
+          gradeLevels[query] = result.gradeLevel;
+          readingScores[query] = result.readingScore;
+        }
+
+        const para = $("<div></div>").html(buildResult(
+                result.id,
+                result.title,
+                result.videoHyperlink,
+                result.channelID,
+                result.channel,
+                result.description,
+                result.gradeLevel,
+                result.readingScore,
+                result.thumbnailHyperlink
+        ));
+        $("#results #" + query + " #inner-results").prepend(para);
+
+        const list = $("#results #" + query + " #inner-results ").children();
+        if (list.length > 10) {
+          // Remove the bottom element to stay at 10
+          list.last().remove();
+        }
+      }
+
+      $("#results #" + query + " #emoji").text(mapSentimentScore(sentimentScores[query] / resultCounts[query]));
+      $("#results #" + query + " #grade").text((gradeLevels[query] / resultCounts[query]).toFixed(2));
+      $("#results #" + query + " #score").text((readingScores[query] / resultCounts[query]).toFixed(2));
+    }
+
+    ws.onerror = function(event) {
+      console.log(event.data);
+    }
+
+    function search(query) {
+      let baseUrl = "@controllers.routes.HomeController.searchSkeleton("")"
+      fetch(baseUrl + query).then(function(response) {
+        return response.text();
+      }).then(function (response) {
+        const id = query;
+        document.getElementById(id)?.remove();
+
+        const oldQuery = queries[counter];
+        if (oldQuery) {
+          // Send our search stop message
+          ws.send(JSON.stringify({
+            code: 'stop',
+            query: oldQuery
+          }));
+        }
+
+        queries[counter] = query;
+
+        // Create and store skeleton for display
+        const para = document.createElement("div");
+        para.innerHTML = response;
+        para.id = id.split(" ").join("_");
+        document.getElementById("results").insertAdjacentElement("afterbegin", para);
+
+        // Send our search start message
+        ws.send(JSON.stringify({
+          code: 'start',
+          query: query
+        }));
+
+        // Prepare for next search
+        document.getElementById('searchBox').value = '';
+
+        // Increment counter and loop at 10
+        counter = (counter + 1) % 10;
+      }).catch(function(err) {
+        console.log('Fetch Error :-S', err);
+      });
+    }
+  </script>
+
+  <div style="text-align: center">
+    <h1>Welcome to YT Lytics!</h1>
+    <label>
+      <input style="width: 200px; height: 20px" type="text" id="searchBox" placeholder="Enter search terms"
+      onkeydown="if(event.key === 'Enter') {search(document.getElementById('searchBox').value);}">
+    </label>
+    <label style="padding-left: 15px;">
+      <button style="border-radius: 12px; background-color: dodgerblue; width: 100px; height: 25px; color: white; font-size: 17px"
+      onclick="search(document.getElementById('searchBox').value)">Go!</button>
+    </label>
+  </div>
+
+
+  <ol id="results"></ol>
+}

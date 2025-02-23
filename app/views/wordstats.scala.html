@@ -1,0 +1,27 @@
+@import services.WordStatisticsService.WordCount
+@(query: String, wordCount: java.util.List[WordCount])
+
+<!-- Word statistics page for displaying word frequency results -->
+@main("Word Statistics for @query") {
+    <a href="@routes.HomeController.index()">Return to main page.</a>
+    <h1>Word Statistics for "@query"</h1>
+    <!-- Table of word counts -->
+    <table border="1">
+        <thead>
+            <tr>
+                <th>Word</th>
+                <th>Count</th>
+            </tr>
+        </thead>
+        <tbody>
+        <!-- Loop through wordCount list and display each word and its frequency -->
+        @for(word <- wordCount.asScala.toList) {
+            <tr>
+                <td>@word.getWord()</td>
+                <td>@word.getCount()</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+
+}

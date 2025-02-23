@@ -1,0 +1,48 @@
+@(query: String, results: Seq[SearchResultModel])
+
+@totalSentimentScore = @{
+    results.map(_.getSentimentScore()).sum
+}
+@sentimentEmoji = @{
+    totalSentimentScore match {
+        case score if score >= 7 => ":)"
+        case score if score <= -7 => ":("
+        case _ => ":|"
+    }
+}
+
+
+@avgReadingScore = @{
+    results.map(_.getReadingScore()).sum / results.size
+}
+
+@avgGradeLevel = @{
+    results.map(_.getGradeLevel()).sum / results.size
+}
+
+<h2>Search terms: @query @sentimentEmoji Flesch-Kincaid Grade Level Avg.= @("%,.2f".format(avgGradeLevel)), Flesch Reading Ease Score Avg.= @("%,.2f".format(avgReadingScore))</h2>
+
+<br>
+<a href="@routes.HomeController.wordStatistics(query)">View Word Statistics</a>
+<ol>
+@for(result <- results.take(10)) {
+    <li >
+        <div style="display: flex; justify-content: space-between; gap: 16px;">
+            <div>
+                <b>Title:</b>
+                <a href="@result.getVideoHyperlink">@result.getTitle</a>,
+                <b>Channel:</b>
+                <a href="@routes.HomeController.searchChannel(result.getChannelID)">@result.getChannel</a>,
+                <b>Description:</b>
+                " @result.getDescription ".
+                Flesch-Kincaid Grade Level = @("%,.2f".format(result.getGradeLevel)), Flesch Reading Ease Score = @("%,.2f".format(result.getReadingScore))
+                <a id="tags" href="@routes.HomeController.getNewPageWithTag(result.getId, result.getTitle, result.getChannel, result.getDescription, result.getVideoHyperlink, result.getChannelID)">Tags</a>
+
+            </div>
+            <div>
+                <img src="@result.getThumbnailHyperlink">
+            </div>
+        </div>
+    </li>
+    }
+</ol>

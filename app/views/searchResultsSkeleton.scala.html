@@ -1,0 +1,8 @@
+@(query: String)
+
+<h2>Search terms: @query <div id="emoji" style="display: inline"></div> Flesch-Kincaid Grade Level Avg.= <div id="grade" style="display: inline"></div>, Flesch Reading Ease Score Avg.= <div id="score" style="display: inline"></div></h2>
+
+<br>
+<a href="@routes.HomeController.wordStatistics(query)">View Word Statistics</a>
+<ol id="inner-results">
+</ol>

@@ -1,0 +1,205 @@
+@(Title: String, ChannelTitle: String, Description: String, VideoHyperlink: String, ChannelHyperlink: String, tags: Seq[String], request: play.mvc.Http.Request)
+    @*<div>Search terms: @query</div>*@
+    @main("YT Lytics") {
+
+        <script>
+                let counter = 1;
+                let queries = [];
+                let ws = new WebSocket('@routes.HomeController.ws.webSocketURL(request)');
+
+                function buildResult(videoId, title, videoHyperlink, channelID, channel, description, gradeLevel, readingScore, thumbnail) {
+                    function encode(key, value) {
+                        if (value) {
+                            return `${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+                        }
+                        return null;
+                    }
+
+                    const queryParams = [
+                        encode("Id", videoId),
+                        encode("Title", title),
+                        encode("ChannelTitle", channel),
+                        encode("Description", description || " "),
+                        encode("VideoHyperlink", videoHyperlink),
+                        encode("ChannelHyperlink", channel),
+                    ].filter(Boolean).join("&");
+
+                    const tagsUrl = `/tags?${queryParams}`;
+                    return `<li >
+                                <div style="display: flex; justify-content: space-between; gap: 16px;">
+                                    <div>
+                                        <b>Title:</b>
+                                        <a href="${videoHyperlink}">${title}</a>,
+                                        <b>Channel:</b>
+                                        <a href="@routes.HomeController.searchChannel("")${channelID}">${channel}</a>,
+                                        <b>Description:</b>
+                                        " ${description} ".
+                                        Flesch-Kincaid Grade Level = ${gradeLevel}, Flesch Reading Ease Score = ${readingScore}
+                                        <a id="tags" href="${tagsUrl}">Tags</a>
+                                    </div>
+                                    <div>
+                                        <img src="${thumbnail}">
+                                    </div>
+                                </div>
+                            </li>`;
+                }
+
+                function mapSentimentScore(score) {
+                    if (score >= 7) {
+                        return ":)";
+                    } else if (score <= -7) {
+                        return ":(";
+                    } else {
+                        return ":|";
+                    }
+                }
+
+                let resultCounts = [];
+                let sentimentScores = [];
+                let gradeLevels = [];
+                let readingScores = [];
+                ws.onmessage = function (event) {
+                    const msg = JSON.parse(event.data);
+                    const query = msg.query.split(" ").join("_");
+                    if (msg.code === "MultipleResult") {
+                        if (resultCounts[query]) {
+                            resultCounts[query] += msg.totalCount;
+                            sentimentScores[query] += msg.totalSentimentScore;
+                            gradeLevels[query] += msg.totalReadingGrade;
+                            readingScores[query] += msg.totalReadingScore;
+                        } else {
+                            resultCounts[query] = msg.totalCount;
+                            sentimentScores[query] = msg.totalSentimentScore;
+                            gradeLevels[query] = msg.totalReadingGrade;
+                            readingScores[query] = msg.totalReadingScore;
+                        }
+
+                        for (const result of msg.results) {
+                            const para = $("<div></div>").html(buildResult(
+                                    result.id,
+                                    result.title,
+                                    result.videoHyperlink,
+                                    result.channelID,
+                                    result.channel,
+                                    result.description,
+                                    result.gradeLevel,
+                                    result.readingScore,
+                                    result.thumbnailHyperlink
+                            ));
+                            $("#results #" + query + " #inner-results").prepend(para);
+
+                            const list = $("#results #" + query + " #inner-results ").children();
+                            if (list.length > 10) {
+                                // Remove the bottom element to stay at 10
+                                list.last().remove();
+                            }
+                        }
+                    } else {
+                        const result = msg.result;
+
+                        if (resultCounts[query]) {
+                            resultCounts[query] += 1;
+                            sentimentScores[query] += result.sentimentScore;
+                            gradeLevels[query] += result.gradeLevel;
+                            readingScores[query] += result.readingScore;
+                        } else {
+                            resultCounts[query] = 1;
+                            sentimentScores[query] = result.sentimentScore;
+                            gradeLevels[query] = result.gradeLevel;
+                            readingScores[query] = result.readingScore;
+                        }
+
+                        const para = $("<div></div>").html(buildResult(
+                                result.id,
+                                result.title,
+                                result.videoHyperlink,
+                                result.channelID,
+                                result.channel,
+                                result.description,
+                                result.gradeLevel,
+                                result.readingScore,
+                                result.thumbnailHyperlink
+                        ));
+                        $("#results #" + query + " #inner-results").prepend(para);
+
+                        const list = $("#results #" + query + " #inner-results ").children();
+                        if (list.length > 10) {
+                            // Remove the bottom element to stay at 10
+                            list.last().remove();
+                        }
+                    }
+
+                    $("#results #" + query + " #emoji").text(mapSentimentScore(sentimentScores[query] / resultCounts[query]));
+                    $("#results #" + query + " #grade").text((gradeLevels[query] / resultCounts[query]).toFixed(2));
+                    $("#results #" + query + " #score").text((readingScores[query] / resultCounts[query]).toFixed(2));
+                }
+
+                ws.onerror = function (event) {
+                    console.log(event.data);
+                }
+
+                function searchTag(query) {
+                    let baseUrl = "@controllers.routes.HomeController.searchSkeleton("")"
+                    fetch(baseUrl + query).then(function (response) {
+                        return response.text();
+                    }).then(function (response) {
+                        const id = query;
+                        document.getElementById(id)?.remove();
+
+                        const oldQuery = queries[counter];
+                        if (oldQuery) {
+                            // Send our search stop message
+                            ws.send(JSON.stringify({
+                                code: 'stop',
+                                query: oldQuery
+                            }));
+                        }
+
+                        queries[counter] = query;
+
+                        // Create and store skeleton for display
+                        const para = document.createElement("div");
+                        para.innerHTML = response;
+                        para.id = id.split(" ").join("_");
+                        document.getElementById("results").insertAdjacentElement("afterbegin", para);
+
+                        // Send our search start message
+                        ws.send(JSON.stringify({
+                            code: 'start',
+                            query: query
+                        }));
+
+                        // Prepare for next search
+                        document.getElementById('searchBox').value = '';
+
+                        // Increment counter and loop at 10
+                        counter = (counter + 1) % 10;
+                    }).catch(function (err) {
+                        console.log('Fetch Error :-S', err);
+                    });
+                }
+
+                // window.search = search;
+        </script>
+
+        <div style="display: flex;
+            justify-content: space-between;
+            gap: 16px;">
+            <div>
+                <b>Title:</b>
+                <a href="@VideoHyperlink">@Title</a>,
+                <b>Channel:</b>
+                <a href="@routes.HomeController.searchChannel(ChannelHyperlink)">@ChannelTitle</a>,
+                <b>Description:</b>
+                " @Description "
+                <div>
+                @for(tag <- tags) {
+                    <a href="#" onclick="searchTag('@tag')">@tag</a>
+                }
+                </div>
+            </div>
+        </div>
+
+
+        <ol id="results"></ol>
+    }

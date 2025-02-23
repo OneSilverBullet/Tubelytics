@@ -1,0 +1,62 @@
+@(channel: ChannelModel)
+
+    @main("YouTube Channel Info") {
+        <div style="font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: rgba(255, 255, 255, 0.8);
+            border-radius: 10px;">
+            <h1 style="font-size: 2.5rem;
+                text-align: center;
+                color: #333;">@channel.getTitle</h1>
+
+            <div style="display: flex;
+                align-items: flex-start;
+                gap: 40px;
+                margin-top: 30px;">
+                    <!-- Left Section: Channel Info -->
+                <div style="flex: 2;">
+                    <p style="font-size: 1.2rem;
+                        color: #666;"><strong>Description:</strong> @channel.getDescription</p>
+                    <p style="font-size: 1.2rem;
+                        color: #666;"><strong>Subscribers:</strong> @channel.getSubscriberCount</p>
+                    <p style="font-size: 1.2rem;
+                        color: #666;"><strong>Videos:</strong> @channel.getVideoCount</p>
+                    <p style="font-size: 1.2rem;
+                        color: #666;"><strong>Views:</strong> @channel.getViewCount</p>
+                    <p style="font-size: 1.2rem;
+                        color: #666;"><strong>Country:</strong> @channel.getCountry</p>
+                </div>
+
+                    <!-- Right Section: Channel Image or Logo -->
+                <div style="flex: 1;
+                    display: flex;
+                    justify-content: center;">
+                    <img src="@channel.getThumbnailHyperlink" alt="YouTube Channel Logo" style="max-width: 100%;
+                        border-radius: 10px;">
+                </div>
+            </div>
+
+            @channelvideos(channel.getVideosList)
+
+                <!-- Footer Section: Additional Styling or Links -->
+            <footer style="margin-top: 40px;
+                text-align: center;">
+                <p style="font-size: 0.9rem;
+                    color: #999;">© 2024-6441 Channel Page. All rights reserved.</p>
+            </footer>
+        </div>
+
+
+            <!-- Background Image CSS -->
+        <style>
+                body {
+                    background-image: url('https://raw.githubusercontent.com/OneSilverBullet/GlimmerEngine/refs/heads/main/document/textures/SkyImage.png');
+                    background-size: cover;
+                    background-position: center;
+                    background-repeat: no-repeat;
+                    background-attachment: fixed;
+                }
+        </style>
+    }
